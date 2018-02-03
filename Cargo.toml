@@ -1,0 +1,6 @@
+[package]
+name = "shindoi_button"
+version = "0.1.0"
+authors = ["je6bmq <je6bmq@gmail.com>"]
+
+[dependencies]
