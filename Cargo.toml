@@ -1,6 +1,11 @@
 [package]
+authors = ["je6bmq <je6bmq@gmail.com>"]
 name = "shindoi_button"
 version = "0.1.0"
-authors = ["je6bmq <je6bmq@gmail.com>"]
 
 [dependencies]
+egg-mode = "0.12.0"
+pnet = "0.20.0"
+serde = "1.0.27"
+serde_derive = "1.0.27"
+serde_yaml = "0.7.3"
