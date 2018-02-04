@@ -4,10 +4,15 @@ extern crate serde_derive;
 extern crate serde_yaml;
 extern crate egg_mode;
 extern crate tokio_core;
+extern crate regex;
+extern crate rand;
 
 use std::fs::File;
 use egg_mode::tweet::DraftTweet;
+use egg_mode::media::{UploadBuilder, media_types};
 use tokio_core::reactor::Core;
+use regex::Regex;
+use rand::distributions::{IndependentSample,Range};
 
 #[derive(Debug, Deserialize)]
 struct Configuration {
@@ -25,6 +30,22 @@ impl Configuration {
     }
 }
 
+fn select_a_image() -> String {
+    let pathes = std::fs::read_dir("img/").expect("there is really existing img directory?");
+
+    let pattern = Regex::new(r".+\.(JPG|jpg)$").unwrap();
+
+    let jpg_files: Vec<String> = pathes.map(|p| p.ok().map(|q| q.file_name().into_string().ok()).and_then(|q| q))
+        .filter(|p| p.clone().map(|q| pattern.is_match(&q)).unwrap_or(false)).map(|p| p.unwrap()).collect();
+
+    let mut rng = rand::thread_rng();
+    let range = Range::new(0,jpg_files.len());
+
+    let index = range.ind_sample(&mut rng);
+
+    jpg_files[index].clone()
+}
+
 fn main() {
     let configuration = Configuration::new("configuration.yml");
 
@@ -38,8 +59,12 @@ fn main() {
         access: access_token,
     };
 
+    let shindoi_picture = select_a_image();
+    println!("{}",shindoi_picture);
     let mut core = Core::new().unwrap();
     let handle = core.handle();
+
+
 
     let post = core.run(DraftTweet::new("Tweet from Rust").send(&token, &handle)).unwrap();
 

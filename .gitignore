@@ -3,3 +3,5 @@
 **/*.rs.bk
 *.lock
 *.yml
+/img/*.jpg
+/img/*.JPG
