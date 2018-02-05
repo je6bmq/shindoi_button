@@ -17,7 +17,8 @@ use rand::distributions::{IndependentSample,Range};
 
 #[derive(Debug, Deserialize)]
 struct Configuration {
-    mac_addr: String,
+    own_mac_addr: String,
+    button_mac_addr: String,
     consumer_key: String,
     consumer_secret: String,
     access_token_key: String,
