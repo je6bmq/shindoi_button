@@ -77,7 +77,7 @@ fn tweet_a_shindoi(ref token: &egg_mode::Token) -> Result<egg_mode::Response<egg
     let upload_builder = UploadBuilder::new(buffer, media_types::image_jpg());
     let media_handler = core.run(upload_builder.call(&token,&handle)).map_err(|e| ShindoiPostError::UploadError(e))?;
 
-    let tweet_draft = DraftTweet::new("Tweet from Rust").media_ids(&[media_handler.id]);
+    let tweet_draft = DraftTweet::new("こころがしんどい").media_ids(&[media_handler.id]);
 
     core.run(tweet_draft.send(&token, &handle)).map_err(|e| ShindoiPostError::TweetError(e))
 }
