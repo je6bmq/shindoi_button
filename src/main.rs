@@ -6,6 +6,7 @@ extern crate egg_mode;
 extern crate tokio_core;
 extern crate regex;
 extern crate rand;
+extern crate pnet;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -14,6 +15,11 @@ use egg_mode::media::{UploadBuilder, media_types};
 use tokio_core::reactor::Core;
 use regex::Regex;
 use rand::distributions::{IndependentSample,Range};
+use pnet::datalink;
+use pnet::datalink::Channel::Ethernet;
+use pnet::packet::ethernet::{EtherTypes,EthernetPacket};
+use pnet::util::MacAddr;
+use std::str::FromStr;
 
 #[derive(Debug, Deserialize)]
 struct Configuration {
@@ -23,6 +29,12 @@ struct Configuration {
     consumer_secret: String,
     access_token_key: String,
     access_token_secret: String,
+}
+
+#[derive(Debug)]
+enum ShindoiPostError {
+    UploadError(egg_mode::media::UploadError),
+    TweetError(egg_mode::error::Error)
 }
 
 impl Configuration {
@@ -48,19 +60,7 @@ fn select_a_image() -> String {
     format!("img/{}",jpg_files[index].clone())
 }
 
-fn main() {
-    let configuration = Configuration::new("configuration.yml");
-
-    let consumer_token = egg_mode::KeyPair::new(configuration.consumer_key,
-                                                configuration.consumer_secret);
-    let access_token = egg_mode::KeyPair::new(configuration.access_token_key,
-                                              configuration.access_token_secret);
-
-    let token = egg_mode::Token::Access {
-        consumer: consumer_token,
-        access: access_token,
-    };
-
+fn tweet_a_shindoi(ref token: &egg_mode::Token) -> Result<egg_mode::Response<egg_mode::tweet::Tweet>,ShindoiPostError> {
     let shindoi_picture = select_a_image();
     let mut buffer = Vec::new();
 
@@ -75,11 +75,68 @@ fn main() {
     let handle = core.handle();
 
     let upload_builder = UploadBuilder::new(buffer, media_types::image_jpg());
-    let media_handler = core.run(upload_builder.call(&token,&handle)).expect("handling media failed..");
+    let media_handler = core.run(upload_builder.call(&token,&handle)).map_err(|e| ShindoiPostError::UploadError(e))?;
 
     let tweet_draft = DraftTweet::new("Tweet from Rust").media_ids(&[media_handler.id]);
 
-    let post = core.run(tweet_draft.send(&token, &handle)).expect("tweet failed..");
+    core.run(tweet_draft.send(&token, &handle)).map_err(|e| ShindoiPostError::TweetError(e))
+}
 
-    println!("{:?}", post);
+fn main() {
+    let configuration = Configuration::new("configuration.yml");
+
+    let consumer_token = egg_mode::KeyPair::new(configuration.consumer_key,
+                                                configuration.consumer_secret);
+    let access_token = egg_mode::KeyPair::new(configuration.access_token_key,
+                                              configuration.access_token_secret);
+
+    let token = egg_mode::Token::Access {
+        consumer: consumer_token,
+        access: access_token,
+    };
+
+    let interfaces = datalink::interfaces();
+    let own_mac_addr = MacAddr::from_str(configuration.own_mac_addr.as_str()).expect("cannot load own MAC address..");
+    let button_mac_addr = MacAddr::from_str(configuration.button_mac_addr.as_str()).expect("cannot load button's MAC address..");
+    let broadcast_mac_addr = MacAddr::new(255u8, 255u8, 255u8, 255u8, 255u8, 255u8);
+
+    let interface = interfaces.iter()
+        .filter(|ifd| {
+            if let Some(addr) = ifd.mac {
+                addr == own_mac_addr
+            } else {
+                false
+            }
+        })
+        .next()
+        .expect("there are no NIC which has specified MAC address..");
+
+    let mut rx = match datalink::channel(&interface, Default::default()) {
+        Ok(Ethernet(_, rx)) => rx,
+        Ok(_) => panic!("Unhandled channel type"),
+        Err(e) => panic!("error occurred when creating the channel: {}", e),
+    };
+
+    println!("Waiting a button's packets...");
+    loop {
+        match rx.next() {
+            Ok(packet) => {
+                let packet = EthernetPacket::new(packet).unwrap();
+                match (packet.get_ethertype(), packet.get_source(), packet.get_destination()) {
+                    (EtherTypes::Arp, src, dst) if dst == broadcast_mac_addr => {
+                        println!("A ARP packet detected: from {}", src);
+                        if src == button_mac_addr {
+                            match tweet_a_shindoi(&token) {
+                                Ok(status) => println!("Tweet status: {:?}", status),
+                                err => println!("something error occurred.., stacktrace: {:?}", err),
+                            };
+                        }
+                    }
+                    _ => continue,
+                }
+            }
+            Err(e) => panic!("error occurred while reading: {}", e),
+        }
+    }
+
 }
